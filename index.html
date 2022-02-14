@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <div style="display: flex;">
+        <div>
+            <p id="conn"></p><br>
+            <ul id="messli">
+            </ul>
+            <p id="typing"></p>
+            <textarea placeholder="Type message" id="message" onkeyup="typing()"></textarea>
+            <button onclick="sendmessage()">Send</button>
+            <br>
+            <br>
+            <p id="store-offer"></p>
+            <p id="offer-store"></p>
+            <br>
+            <button onclick="createoffer()">Create offer</button>
+            <br>
+            <p>input offer</p>
+            <input placeholder="offer" id="offerinput"><button onclick="storeoffer()">Store offer</button>
+            <br>
+            <p>input answer</p>
+            <input placeholder="answer" id="answerinput"><button onclick="storeanswer()">Store answer</button>
+            <br>
+        </div>
+        <div id="video">
+            <video id="local-video" style="width: 200px; height: 200px; object-fit: cover;" muted autoplay></video>
+            <video id="remote-video" style="width: 200px; height: 200px; object-fit: cover;" autoplay></video>
+        </div>
+    </div>
+
+
+    <script>
+        let localstream
+        let configuration = [{
+            iceServers: {
+                "urls": ["stun:stun.l.google.com:19302",
+                    "stun:stun2.l.google.com:19302",
+                    "stun:stun1.l.google.com:19302"
+                ]
+            },
+        }]
+
+        navigator.getUserMedia({
+            video: true,
+            audio: true
+        }, (stream) => {
+            localstream = stream
+            document.getElementById('local-video').srcObject = localstream
+            addlc()
+        }, (error) => {
+            console.log(error)
+        })
+
+        const lc = new RTCPeerConnection(configuration)
+        const dc = lc.createDataChannel("channel")
+
+        lc.ontrack = e => {
+            document.getElementById('remote-video').srcObject = e.streams[0]
+        }
+
+        function addlc() {
+            localstream.getTracks().forEach(function(track) {
+                lc.addTrack(track, localstream);
+            });
+        }
+
+        usr = ""
+
+        function storeoffer() {
+            offer = document.getElementById('offerinput').value
+            lc.onicecandidate = e => {
+                document.getElementById("store-offer").innerText = "Answer"
+                document.getElementById("offer-store").innerText = JSON.stringify(lc.localDescription)
+            }
+            lc.ondatachannel = e => {
+                lc.dc = e.channel
+                lc.dc.onmessage = e => {
+                    mess = JSON.parse(e.data)
+                    if (mess.type == "message") {
+                        document.getElementById('messli').innerHTML += `<li>Other : ${mess.message}</li>`
+                    } else if (mess.type == "typing") {
+                        if (typeof interv != 'undefined') {
+                            clearInterval(interv)
+                        }
+                        document.getElementById('typing').innerText = 'typing...'
+                        interv = setInterval(() => {
+                            document.getElementById('typing').innerText = ''
+                        }, 2000)
+                    }
+                }
+                lc.dc.onopen = e => {
+                    document.getElementById('conn').innerHTML = "Connection opened!"
+                    document.getElementById("store-offer").innerText = ""
+                    document.getElementById("offer-store").innerText = ""
+                }
+                lc.dc.onclose = e => {
+                    document.getElementById('conn').innerHTML = "Connection closed!"
+                    document.getElementById("store-offer").innerText = ""
+                    document.getElementById("offer-store").innerText = ""
+                }
+            }
+            lc.setRemoteDescription(JSON.parse(offer))
+            lc.createAnswer().then(a => lc.setLocalDescription(a))
+            usr = "rec"
+        }
+
+        function createoffer() {
+            dc.onmessage = e => {
+                mess = JSON.parse(e.data)
+                if (mess.type == "message") {
+                    document.getElementById('messli').innerHTML += `<li>Other : ${mess.message}</li>`
+                } else if (mess.type == "typing") {
+                    if (typeof interv != 'undefined') {
+                        clearInterval(interv)
+                    }
+                    document.getElementById('typing').innerText = 'typing...'
+                    interv = setInterval(() => {
+                        document.getElementById('typing').innerText = ''
+                    }, 2000)
+                }
+            }
+            dc.onopen = e => {
+                document.getElementById('conn').innerHTML = "Connection opened!"
+                document.getElementById("store-offer").innerText = ""
+                document.getElementById("offer-store").innerText = ""
+            }
+            dc.onclose = e => {
+                document.getElementById('conn').innerHTML = "Connection closed!"
+                document.getElementById("store-offer").innerText = ""
+                document.getElementById("offer-store").innerText = ""
+            }
+
+            lc.onicecandidate = e => {
+                document.getElementById("store-offer").innerText = "Offer"
+                document.getElementById("offer-store").innerText = JSON.stringify(lc.localDescription)
+            }
+            lc.createOffer().then(o => lc.setLocalDescription(o))
+            usr = "cre"
+        }
+
+        function storeanswer() {
+            answer = document.getElementById('answerinput').value
+            lc.setRemoteDescription(JSON.parse(answer))
+        }
+
+        function sendmessage() {
+            message = document.getElementById('message').value
+            mess = {
+                type: "message",
+                message: message
+            }
+            document.getElementById('messli').innerHTML += `<li>Me : ${message}</li>`
+            if (usr == "cre") {
+                dc.send(JSON.stringify(mess))
+            } else if (usr == "rec") {
+                lc.dc.send(JSON.stringify(mess))
+            }
+            document.getElementById('message').value = ''
+        }
+
+        function typing() {
+            mess = {
+                type: "typing",
+            }
+            if (usr == "cre") {
+                dc.send(JSON.stringify(mess))
+            } else if (usr == "rec") {
+                lc.dc.send(JSON.stringify(mess))
+            }
+        }
+    </script>
+</body>
+
+</html>
